@@ -1,0 +1,6 @@
+<resources>
+    <string id="AppName">CourseTrack Music</string>
+    <string id="HelloTitle">Music</string>
+    <string id="HelloHint">Up/Down para cambiar · Enter para play/pause</string>
+</resources>
+
