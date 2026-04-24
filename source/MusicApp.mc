@@ -4,8 +4,6 @@ using Toybox.WatchUi;
 class MusicApp extends App.AppBase {
     function initialize() {
         AppBase.initialize();
-        setProperty("counter", 0);
-        setProperty("playing", false);
     }
 
     function onStart(state) {
@@ -15,7 +13,7 @@ class MusicApp extends App.AppBase {
     }
 
     function getInitialView() {
-        return [ new MusicView(), new MusicInputDelegate() ];
+        return [ new MusicView() ];
     }
 }
 
