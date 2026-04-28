@@ -1,0 +1,4 @@
+En este proyecto, prioriza siempre la documentación oficial de Garmin Connect IQ / Monkey C, especialmente:
+https://developer.garmin.com/connect-iq/api-docs/
+
+Cuando cites APIs (Toybox.*), basa las respuestas en la doc oficial y menciona si algo depende de versión/dispositivo. Puedes complementar con otras fuentes oficiales de Garmin si aportan valor, indicando el origen.

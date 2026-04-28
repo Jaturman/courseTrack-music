@@ -34,7 +34,8 @@ files = sorted(set(files))
 payload = []
 for path in files:
     try:
-        mtime = int(os.path.getmtime(path))
+        # Usar resolución alta para que múltiples saves en <1s disparen rebuild.
+        mtime = os.stat(path).st_mtime_ns
     except OSError:
         mtime = 0
     payload.append(f"{path}:{mtime}")
