@@ -13,7 +13,7 @@ class MusicApp extends App.AppBase {
     }
 
     function getInitialView() {
-        return [ new MusicView() ];
+        return [ new MusicView(), new MusicInputDelegate() ];
     }
 }
 

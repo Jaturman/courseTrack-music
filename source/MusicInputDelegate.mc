@@ -26,28 +26,10 @@ class MusicInputDelegate extends WatchUi.InputDelegate {
         var key = keyEvent.getKey();
         var app = getApp();
 
-        var counter = app.getProperty("counter");
-        if (counter == null) { counter = 0; }
-        var playing = app.getProperty("playing");
-        if (playing == null) { playing = false; }
-
-        if (key == WatchUi.KEY_UP) {
-            feedback();
-            app.setProperty("counter", counter + 1);
-            WatchUi.requestUpdate();
-            return true;
-        }
-
-        if (key == WatchUi.KEY_DOWN) {
-            feedback();
-            app.setProperty("counter", counter - 1);
-            WatchUi.requestUpdate();
-            return true;
-        }
-
         if (key == WatchUi.KEY_ENTER) {
             feedback();
-            app.setProperty("playing", !playing);
+            // Arranca una nueva ronda (5s) de captura de pico.
+            app.setProperty("startRound", true);
             WatchUi.requestUpdate();
             return true;
         }
