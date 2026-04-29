@@ -1,5 +1,7 @@
 using Toybox.Graphics as Gfx;
 using Toybox.Attention;
+using Toybox.Application as App;
+using Toybox.Communications as Communications;
 using Toybox.Lang as Lang;
 using Toybox.Math as Math;
 using Toybox.Sensor as Sensor;
@@ -20,6 +22,21 @@ class MusicView extends WatchUi.View {
     private var _recordDynMg;
     private var _pendingStart;
 
+    private var _name;
+    private var _namePrompting;
+    private static const NAME_STORAGE_KEY = "g-snap_name";
+
+    // Pendiente de ajustar en producción: URL del backend.
+    // En local lo probaremos contra el endpoint de wrangler dev.
+    private static const BACKEND_SUBMIT_URL = "http://localhost:8787/submit";
+
+    // Pendiente de ajustar en producción: la misma key que uses en backend.
+    private static const BACKEND_X_API_KEY = "dev-change-me";
+
+    private var _submitInFlight;
+    private var _pendingSubmitAfterName;
+    private var _pendingSubmitValue;
+
     function initialize() {
         View.initialize();
         _tick = new Timer.Timer();
@@ -32,6 +49,21 @@ class MusicView extends WatchUi.View {
         _resultDynMg = 0;
         _recordDynMg = 0;
         _pendingStart = false;
+        _name = null;
+        _namePrompting = false;
+        _submitInFlight = false;
+        _pendingSubmitAfterName = false;
+        _pendingSubmitValue = 0;
+
+        // Carga el nombre previamente guardado (si existe).
+        // Nota: Storage solo funciona si está disponible en el SDK/dispositivo.
+        try {
+            if (App has :Storage) {
+                _name = App.Storage.getValue(NAME_STORAGE_KEY);
+            }
+        } catch (e) {
+            _name = null;
+        }
     }
 
     function onLayout(dc) {
@@ -163,8 +195,100 @@ class MusicView extends WatchUi.View {
                 if (_countdownTick != null) {
                     _countdownTick.stop();
                 }
+
+                // Guardamos el valor del resultado para enviarlo al backend.
+                _pendingSubmitValue = _resultDynMg;
+
+                // Si ya tenemos name, enviamos ahora; si no, lo dejamos en cola.
+                if (_name != null && (_name as Lang.String).length() > 0) {
+                    _pendingSubmitAfterName = false;
+                    submitResultToBackend(_name as Lang.String, _pendingSubmitValue);
+                } else {
+                    _pendingSubmitAfterName = true;
+                }
+
+                // Pedimos el nombre si aún no existe.
+                maybePromptNameAfterFirstRecord();
             }
         }
+    }
+
+    function maybePromptNameAfterFirstRecord() as Void {
+        if (_namePrompting) { return; }
+        if (_name != null && (_name as Lang.String).length() > 0) { return; }
+
+        _namePrompting = true;
+        // Pide nombre con un TextPicker nativo.
+        // Usamos un inicial vacío; el max de 8 se aplicará al guardar.
+        WatchUi.pushView(new WatchUi.TextPicker(""), new NameTextPickerDelegate(self), WatchUi.SLIDE_UP);
+    }
+
+    // Llamado por el delegate de TextPicker cuando el usuario confirma texto.
+    function onNamePicked(name as Lang.String) as Void {
+        var n = name;
+
+        // Aplicamos el máximo de 8 caracteres en el cliente.
+        if (n.length() > 8) {
+            n = n.substring(0, 8);
+        }
+
+        // Si el usuario manda vacío (o similar), no guardamos.
+        if (n.length() <= 0) {
+            _namePrompting = false;
+            return;
+        }
+
+        _name = n;
+        _namePrompting = false;
+
+        try {
+            if (App has :Storage) {
+                App.Storage.setValue(NAME_STORAGE_KEY, _name);
+            }
+        } catch (e) {
+            // Si falla el guardado local, al menos evitamos volver a pedir el nombre.
+        }
+
+        // Si el primer resultado quedó en cola, lo enviamos ahora.
+        if (_pendingSubmitAfterName) {
+            _pendingSubmitAfterName = false;
+            submitResultToBackend(_name as Lang.String, _pendingSubmitValue);
+        }
+
+        WatchUi.requestUpdate();
+    }
+
+    function onNamePickerCanceled() as Void {
+        _namePrompting = false;
+        WatchUi.requestUpdate();
+    }
+
+    function submitResultToBackend(name as Lang.String, value as Lang.Number) as Void {
+        if (_submitInFlight) { return; }
+        if (name == null || name.length() <= 0) { return; }
+
+        _submitInFlight = true;
+
+        var url = BACKEND_SUBMIT_URL;
+        var params = {
+            "name" => name,
+            "value" => value
+        };
+
+        var options = {
+            :method => Communications.HTTP_REQUEST_METHOD_POST,
+            :headers => {
+                "Content-Type" => Communications.REQUEST_CONTENT_TYPE_JSON,
+                "x-api-key" => BACKEND_X_API_KEY
+            },
+            :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_JSON
+        };
+
+        Communications.makeWebRequest(url, params, options, method(:onSubmitResponse));
+    }
+
+    function onSubmitResponse(responseCode as Lang.Number, data as Null or Lang.Dictionary or Lang.String) as Void {
+        _submitInFlight = false;
     }
 
     function onTick() as Void {
@@ -196,6 +320,11 @@ class MusicView extends WatchUi.View {
             }
             WatchUi.requestUpdate();
         }
+    }
+
+    // Usado por el delegate de navegación para deshabilitar UP/DOWN durante los 5s.
+    function isRecording() {
+        return _recording;
     }
 
     function onSensorData(data as Sensor.SensorData) as Void {
@@ -291,6 +420,10 @@ class MusicView extends WatchUi.View {
         // Prompt fijo, pequeño, en inglés, abajo.
         dc.drawText(w / 2, h - 18, Gfx.FONT_SMALL, "Press Enter", Gfx.TEXT_JUSTIFY_CENTER);
 
+        if (_hasResult && _name != null && (_name as Lang.String).length() > 0) {
+            dc.drawText(w / 2, h - 35, Gfx.FONT_SMALL, "By " + _name, Gfx.TEXT_JUSTIFY_CENTER);
+        }
+
         if (_recording) {
             // Durante los 5s no se muestra el valor registrado.
             var remaining = 5000 - (Sys.getTimer() - _startMs);
@@ -333,6 +466,31 @@ class MusicView extends WatchUi.View {
             var uy = y + ((numFh - dc.getFontHeight(unitFont)) / 2);
             dc.drawText(ux, uy, unitFont, "g", Gfx.TEXT_JUSTIFY_LEFT);
         }
+    }
+}
+
+class NameTextPickerDelegate extends WatchUi.TextPickerDelegate {
+    private var _view;
+
+    function initialize(view) {
+        WatchUi.TextPickerDelegate.initialize();
+        _view = view;
+    }
+
+    function onTextEntered(text as Lang.String, changed as Lang.Boolean) as Lang.Boolean {
+        if (_view != null && (_view has :onNamePicked)) {
+            _view.onNamePicked(text);
+        }
+        WatchUi.popView(WatchUi.SLIDE_RIGHT);
+        return true;
+    }
+
+    function onCancel() as Lang.Boolean {
+        if (_view != null && (_view has :onNamePickerCanceled)) {
+            _view.onNamePickerCanceled();
+        }
+        WatchUi.popView(WatchUi.SLIDE_RIGHT);
+        return true;
     }
 }
 

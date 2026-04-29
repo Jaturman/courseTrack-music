@@ -1,3 +1,6 @@
 .DS_Store
 bin/
 .venv/
+backend/**/node_modules/
+backend/**/.wrangler/
+.wrangler-home/
